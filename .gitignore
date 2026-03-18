@@ -1,60 +1,37 @@
 # Python
-
 __pycache__/
 *.py[cod]
-*.pyo
-*.pyd
-.Python
-*.egg-info/
-dist/
-build/
-.eggs/
-*.egg
 
 # Virtual environments
-
 .venv/
 venv/
-env/
-ENV/
+bd-pipeline-env/
 
 # Environment variables
-
 .env
-.env.*
 
 # Spark
-
 spark-warehouse/
-derby.log
 metastore_db/
-*.crc
 
-# Data files (store in MinIO, not git)
+# Data (ignore heavy files, keep structure)
+data/local/*.parquet
+data/local/*.csv
 
-data/
-*.parquet
-*.csv
-*.json.gz
-*.snappy
+!data/
+!data/local/
 
-# MinIO local storage
-
-minio-data/
-.minio.sys/
+# Storage layers
+storage/taxi/raw/
+storage/taxi/silver/
 
 # Logs
-
-logs/
 *.log
 
 # IDE
-
-.idea/
 .vscode/
-*.iml
+.idea/
 
 # OS
-
 .DS_Store
 Thumbs.db
