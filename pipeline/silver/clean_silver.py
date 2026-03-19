@@ -2,7 +2,7 @@ from pathlib import Path
 import pandas as pd
 
 # Paths
-BASE_DIR = Path(__file__).resolve().parent.parent
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 RAW_PATH = BASE_DIR / "storage" / "taxi" / "raw" / "trips.parquet"
 SILVER_PATH = BASE_DIR / "storage" / "taxi" / "silver" / "clean_trips.parquet"
@@ -35,6 +35,8 @@ def drop_invalid_rows(df):
     initial_len = len(df)
 
     # replace missing passenger_count instead of dropping
+    missing = df["passenger_count"].isna().sum()
+    print(f"Filling {missing} missing passenger_count with 0")
     df["passenger_count"] = df["passenger_count"].fillna(0)
 
     # logic checks
@@ -92,6 +94,43 @@ def save_data(df):
     print(f"Saved to {SILVER_PATH}")
 
 
+# enrichment
+def add_zones(df):
+    zones = pd.read_csv(BASE_DIR / "storage" / "taxi" / "raw" / "taxi_zones.csv")
+
+    # pickup join
+    df = df.merge(
+        zones,
+        left_on="pickup_location_id",
+        right_on="LocationID",
+        how="left"
+    )
+
+    df = df.rename(columns={
+    "Borough": "pickup_borough",
+    "Zone": "pickup_zone"
+})
+    
+
+    # dropoff join
+    df = df.merge(
+        zones,
+        left_on="dropoff_location_id",
+        right_on="LocationID",
+        how="left"
+    )
+
+    df = df.rename(columns={
+    "Borough": "dropoff_borough",
+    "Zone": "dropoff_zone"
+})
+    
+    # ---- CLEANUP ----
+    df = df.drop(columns=["LocationID_x", "LocationID_y"])
+
+    return df
+
+
 # -----------------------------
 # ORCHESTRATOR
 # -----------------------------
@@ -126,15 +165,35 @@ def run_cleaning():
     # recompute after fixes
     df = add_duration(df)
 
+    # Remove duration outliers (realistic trips only)
+    before = len(df)
+
+    df = df[(df["duration_sec"] > 60) & (df["duration_sec"] < 7200)]
+
+    after = len(df)
+    print(f"Removed {before - after} duration outliers")
+
     df = remove_duplicates(df)
+
+    df = add_zones(df)
+
+    # Remove extreme distance outliers (based on distribution analysis)
+    before = len(df)
+
+    df = df[(df["trip_distance"] > 0) & (df["trip_distance"] < 30)]
+
+    after = len(df)
+    print(f"Removed {before - after} distance outliers")
 
     # SAVE
     save_data(df)
 
     # AFTER
     print("\n--- AFTER CLEANING ---")
+
     print("Total rows:", len(df))
 
+    print(df[["pickup_zone", "dropoff_zone"]].head())
 
 # -----------------------------
 if __name__ == "__main__":

@@ -1,7 +1,7 @@
 from pathlib import Path
 import pandas as pd
 
-BASE_DIR = Path(__file__).resolve().parent.parent
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 SILVER_PATH = BASE_DIR / "storage" / "taxi" / "silver" / "clean_trips.parquet"
 
