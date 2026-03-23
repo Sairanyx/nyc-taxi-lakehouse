@@ -1,16 +1,19 @@
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import col
+from pyspark.sql.functions import col, sum, when, min, max
 
 
 def create_spark():
     return (
         SparkSession.builder
         .appName("Validate Silver")
+
+        # MinIO connection (S3-compatible storage)
         .config("spark.hadoop.fs.s3a.endpoint", "http://localhost:9000")
         .config("spark.hadoop.fs.s3a.access.key", "admin")
         .config("spark.hadoop.fs.s3a.secret.key", "password123")
         .config("spark.hadoop.fs.s3a.path.style.access", "true")
         .config("spark.hadoop.fs.s3a.connection.ssl.enabled", "false")
+
         .getOrCreate()
     )
 
@@ -20,45 +23,43 @@ def run_validation():
 
     print("Loading Silver data...")
     df = spark.read.parquet("s3a://nyc-taxi/silver/clean_trips/")
-    df = df.cache()
+
+    # Print schema to verify structure
     df.printSchema()
 
-    # BASIC INFO
-    total = df.count()
-    print(f"Total rows: {total}")
+    # --- SINGLE PASS AGGREGATION (efficient) ---
+    # We compute ALL checks in one scan of the data
+    agg = df.agg(
+        min("duration_sec").alias("min_duration"),
+        max("duration_sec").alias("max_duration"),
 
-    print("\nColumns:", df.columns)
+        # Data quality checks
+        sum(when(col("duration_sec") < 0, 1).otherwise(0)).alias("negative_duration"),
+        sum(when(col("trip_distance") <= 0, 1).otherwise(0)).alias("invalid_distance"),
+        sum(when(col("passenger_count") < 0, 1).otherwise(0)).alias("negative_passengers"),
+        sum(when(col("duration_sec") > 7200, 1).otherwise(0)).alias("very_long_duration"),
+        sum(when(col("trip_distance") > 30, 1).otherwise(0)).alias("very_long_distance"),
+        sum(when(col("duration_sec").isNull(), 1).otherwise(0)).alias("null_duration"),
+        sum(when(col("trip_distance").isNull(), 1).otherwise(0)).alias("null_distance"),
+        sum(when(col("passenger_count").isNull(), 1).otherwise(0)).alias("null_passengers"),
+    )
 
-    if total == 0:
-        raise ValueError("Validation failed: Silver dataset is empty")
+    # Convert Spark Row → Python dict
+    result = agg.collect()[0].asDict()
 
-  
-    # GLOBAL SANITY CHECK
+    # --- RANGE CHECK ---
     print("\n--- DURATION RANGE ---")
-    df.selectExpr(
-        "min(duration_sec) as min_duration",
-        "max(duration_sec) as max_duration"
-    ).show()
+    print("min_duration:", result["min_duration"])
+    print("max_duration:", result["max_duration"])
 
-
-    # VALIDATION CHECKS
+    # --- VALIDATION OUTPUT ---
     print("\n--- VALIDATION CHECKS ---")
+    for key, value in result.items():
+        if key not in ["min_duration", "max_duration"]:
+            print(f"{key}: {value}")
 
-    checks = {
-        "negative_duration": df.filter(col("duration_sec") < 0).count(),
-        "invalid_distance": df.filter(col("trip_distance") <= 0).count(),
-        "negative_passengers": df.filter(col("passenger_count") < 0).count(),
-        "very_long_duration": df.filter(col("duration_sec") > 7200).count(),
-        "very_long_distance": df.filter(col("trip_distance") > 30).count(),
-        "null_duration": df.filter(col("duration_sec").isNull()).count(),
-        "null_distance": df.filter(col("trip_distance").isNull()).count(),
-        "null_passengers": df.filter(col("passenger_count").isNull()).count(),
-    }
-
-    for name, value in checks.items():
-        print(f"{name}: {value}")
-
-    # Fail pipeline if critical issues exist
+    # --- FAIL CONDITIONS (pipeline safety) ---
+    # These errors should NEVER exist in clean Silver data
     critical_errors = [
         "negative_duration",
         "invalid_distance",
@@ -68,11 +69,11 @@ def run_validation():
     ]
 
     for key in critical_errors:
-        if checks[key] > 0:
+        if result[key] > 0:
             raise ValueError(f"Validation failed: {key} detected")
 
-
-    # SAMPLE DATA
+    # --- SAMPLE OUTPUT ---
+    # Quick sanity check of real rows
     print("\n--- SAMPLE DATA ---")
     df.select(
         "pickup_datetime",

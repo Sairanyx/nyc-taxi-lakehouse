@@ -1,5 +1,5 @@
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import col, hour, count, avg
+from pyspark.sql.functions import col, hour, count, avg, when
 
 
 def create_spark():
@@ -20,12 +20,28 @@ def main():
 
     print("Loading Silver data...")
     df = spark.read.parquet("s3a://nyc-taxi/silver/clean_trips/")
+    df.show(5)
 
-    # -------------------------
+    print("Loading taxi zones...")
+    zones = spark.read.csv(
+        "/mnt/c/Projects/nyc-taxi-lakehouse/storage/taxi/taxi_zone.csv",
+        header=True,
+        inferSchema=True
+    )
+
+    #  avoid duplicate column name (LocationID)
+    zones = zones.withColumnRenamed("LocationID", "zone_LocationID")
+
+    # ENRICH DATA
+    df = df.join(
+        zones,
+        df.PULocationID == zones.zone_LocationID,
+        "left"
+    )
+
     # Q1: Ride demand by hour
-    # -------------------------
     hourly = (
-        df.withColumn("hour", hour(col("tpep_pickup_datetime")))
+        df.withColumn("hour", hour(col("pickup_datetime")))
         .groupBy("hour")
         .agg(count("*").alias("ride_count"))
         .orderBy("hour")
@@ -35,12 +51,21 @@ def main():
         "s3a://nyc-taxi/gold/hourly_demand/"
     )
 
-    # -------------------------
-    # Q2: Popular routes
-    # -------------------------
+    # Q2: Ride demand by borough
+    borough = (
+        df.groupBy("Borough")
+        .agg(count("*").alias("ride_count"))
+        .orderBy(col("ride_count").desc())
+    )
+
+    borough.write.mode("overwrite").parquet(
+        "s3a://nyc-taxi/gold/demand_by_borough/"
+    )
+
+    # Q3: Most popular routes
     routes = (
         df.groupBy("PULocationID", "DOLocationID")
-        .agg(count("*").alias("ride_count"))
+        .agg(count("*").alias("ride_count"))  
         .orderBy(col("ride_count").desc())
     )
 
@@ -48,13 +73,12 @@ def main():
         "s3a://nyc-taxi/gold/popular_routes/"
     )
 
-    # -------------------------
-    # Q3–Q5: Summary metrics (better grouped)
-    # -------------------------
+    # Q4–Q6: Summary metrics
     summary = df.agg(
         avg("duration_sec").alias("avg_duration_sec"),
         avg("trip_distance").alias("avg_distance"),
-        avg("passenger_count").alias("avg_passenger_count")
+        avg(when(col("passenger_count") > 0, col("passenger_count")))
+        .alias("avg_passenger_count")
     )
 
     summary.write.mode("overwrite").parquet(

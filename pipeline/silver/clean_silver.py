@@ -14,15 +14,6 @@ def create_spark():
         .config("spark.hadoop.fs.s3a.path.style.access", "true")
         .config("spark.hadoop.fs.s3a.connection.ssl.enabled", "false")
 
-        # FIX timeouts 
-        .config("spark.hadoop.fs.s3a.connection.timeout", "60000")
-        .config("spark.hadoop.fs.s3a.connection.establish.timeout", "5000")
-        .config("spark.hadoop.fs.s3a.connection.request.timeout", "60000")
-        .config("spark.hadoop.fs.s3a.socket.timeout", "60000")
-
-        # stability
-        .config("spark.hadoop.fs.s3a.attempts.maximum", "3")
-
         .getOrCreate()
     )
 
@@ -33,16 +24,24 @@ def run_cleaning():
     print("Loading Bronze data...")
     df = spark.read.parquet("s3a://nyc-taxi/bronze/yellow_tripdata/")
 
+    print("Sample BEFORE cleaning:")
+    df.show(5)
 
-    # Rename columns (clean schema)
+    # -----------------------------
+    # 1. Rename columns
+    # -----------------------------
     df = df.withColumnRenamed("tpep_pickup_datetime", "pickup_datetime") \
            .withColumnRenamed("tpep_dropoff_datetime", "dropoff_datetime")
 
-
-    # Create timestamp columns
+    # -----------------------------
+    # 2. Create timestamps
+    # -----------------------------
     df = df.withColumn("pickup_ts", unix_timestamp(col("pickup_datetime")))
     df = df.withColumn("dropoff_ts", unix_timestamp(col("dropoff_datetime")))
-    # Fix small timestamp errors
+
+    # -----------------------------
+    # 3. Fix SMALL negative durations (-60 < x < 0)
+    # -----------------------------
     df = df.withColumn(
         "dropoff_datetime",
         when(
@@ -52,31 +51,46 @@ def run_cleaning():
         ).otherwise(col("dropoff_datetime"))
     )
 
-    # Recompute dropoff_ts after fixing timestamps
+    # recompute dropoff_ts after fix
     df = df.withColumn("dropoff_ts", unix_timestamp(col("dropoff_datetime")))
 
-   
-    # Feature: duration 
+    # -----------------------------
+    # 4. Compute duration
+    # -----------------------------
     df = df.withColumn(
         "duration_sec",
         col("dropoff_ts") - col("pickup_ts")
     )
 
-    
-    # Fill missing values
+    # -----------------------------
+    # 5. Handle missing passengers (DO NOT drop)
+    # -----------------------------
     df = df.fillna({"passenger_count": 0})
 
-   
-    # Remove invalid durations
-    df = df.filter((col("duration_sec") > 0) & (col("duration_sec") < 7200))
+    # -----------------------------
+    # 6. Remove INVALID data
+    # -----------------------------
+    # severe + medium negative durations
+    df = df.filter(col("duration_sec") >= 0)
 
-    # Remove distance outliers
-    df = df.filter((col("trip_distance") > 0) & (col("trip_distance") < 30))
+    # impossible values
+    df = df.filter(col("trip_distance") >= 0)
+    df = df.filter(col("passenger_count") >= 0)
 
-    # Remove invalid passengers
-    df = df.filter(col("passenger_count") > 0)
+    # -----------------------------
+    # 7. Remove OUTLIERS (analysis-ready dataset)
+    # -----------------------------
+    df = df.filter(
+        (col("duration_sec") >= 60) & (col("duration_sec") < 7200)
+    )
 
-    # Drop duplicates (ONLY ONCE, after filtering)
+    df = df.filter(
+        (col("trip_distance") > 0) & (col("trip_distance") < 30)
+    )
+
+    # -----------------------------
+    # 8. Remove duplicates
+    # -----------------------------
     df = df.dropDuplicates([
         "pickup_datetime",
         "dropoff_datetime",
@@ -84,18 +98,24 @@ def run_cleaning():
         "DOLocationID"
     ])
 
-    # Repartition for writing (AFTER all transformations)
-    df = df.repartition(4)
-   
-    print("Cleaning completed")
-
+    # -----------------------------
+    # 9. Drop helper columns
+    # -----------------------------
     df = df.drop("pickup_ts", "dropoff_ts")
 
+    print("Sample AFTER cleaning:")
+    df.show(5)
 
-    df.write  \
-            .mode("overwrite") \
-            .partitionBy("PULocationID") \
-            .parquet("s3a://nyc-taxi/silver/clean_trips/")
+    # -----------------------------
+    # 10. Repartition (small cluster)
+    # -----------------------------
+    df = df.repartition(4)
+
+    print("Writing Silver layer...")
+
+    df.write \
+        .mode("overwrite") \
+        .parquet("s3a://nyc-taxi/silver/clean_trips/")
 
     print("Silver layer completed.")
 
