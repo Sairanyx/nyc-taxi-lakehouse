@@ -1,37 +1,11 @@
-# Python
-__pycache__/
-*.py[cod]
 
-# Virtual environments
-.venv/
+
+
+# Project storage (VERY IMPORTANT)
+storage/
+*.parquet
+spark-warehouse/venv/
 venv/
-bd-pipeline-env/
-
-# Environment variables
-.env
-
-# Spark
-spark-warehouse/
-metastore_db/
-
-# Data (ignore heavy files, keep structure)
-data/local/*.parquet
-data/local/*.csv
-
-!data/
-!data/local/
-
-# Storage layers
-storage/taxi/raw/
-storage/taxi/silver/
-
-# Logs
-*.log
-
-# IDE
-.vscode/
-.idea/
-
-# OS
-.DS_Store
-Thumbs.db
+venv/
+*_backup.py
+pipeline/test_*.py
