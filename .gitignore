@@ -9,3 +9,5 @@ venv/
 venv/
 *_backup.py
 pipeline/test_*.py
+pipeline/spark_test.py
+pipeline/spark_jvm_test.py
