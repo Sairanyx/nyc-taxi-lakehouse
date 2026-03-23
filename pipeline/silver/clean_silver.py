@@ -1,200 +1,104 @@
-from pathlib import Path
-import pandas as pd
-
-# Paths
-BASE_DIR = Path(__file__).resolve().parent.parent.parent
-
-RAW_PATH = BASE_DIR / "storage" / "taxi" / "raw" / "trips.parquet"
-SILVER_PATH = BASE_DIR / "storage" / "taxi" / "silver" / "clean_trips.parquet"
+from pyspark.sql import SparkSession
+from pyspark.sql.functions import col, unix_timestamp, when
 
 
-# -----------------------------
-# LOAD
-# -----------------------------
-def load_data():
-    print("Loading raw data...")
-    return pd.read_parquet(RAW_PATH)
+def create_spark():
+    return (
+        SparkSession.builder
+        .appName("Silver Cleaning")
 
+        # MinIO connection
+        .config("spark.hadoop.fs.s3a.endpoint", "http://localhost:9000")
+        .config("spark.hadoop.fs.s3a.access.key", "admin")
+        .config("spark.hadoop.fs.s3a.secret.key", "password123")
+        .config("spark.hadoop.fs.s3a.path.style.access", "true")
+        .config("spark.hadoop.fs.s3a.connection.ssl.enabled", "false")
 
-# -----------------------------
-# FEATURE ENGINEERING
-# -----------------------------
-def add_duration(df):
-    df["duration_sec"] = (
-        df["dropoff_datetime"] - df["pickup_datetime"]
-    ).dt.total_seconds()
-    return df
+        # FIX timeouts 
+        .config("spark.hadoop.fs.s3a.connection.timeout", "60000")
+        .config("spark.hadoop.fs.s3a.connection.establish.timeout", "5000")
+        .config("spark.hadoop.fs.s3a.connection.request.timeout", "60000")
+        .config("spark.hadoop.fs.s3a.socket.timeout", "60000")
 
+        # stability
+        .config("spark.hadoop.fs.s3a.attempts.maximum", "3")
 
-# -----------------------------
-# CLEANING STEPS
-# -----------------------------
-def drop_invalid_rows(df):
-    print("Dropping invalid rows...")
-
-    initial_len = len(df)
-
-    # replace missing passenger_count instead of dropping
-    missing = df["passenger_count"].isna().sum()
-    print(f"Filling {missing} missing passenger_count with 0")
-    df["passenger_count"] = df["passenger_count"].fillna(0)
-
-    # logic checks
-    df = df[df["duration_sec"] >= -3600]
-    df = df[df["trip_distance"] >= 0]
-    df = df[df["passenger_count"] >= 0]
-
-    print(f"Removed {initial_len - len(df)} invalid rows")
-    return df
-
-
-def drop_medium_time_errors(df):
-    print("Dropping medium time inconsistencies...")
-
-    initial_len = len(df)
-
-    mask = (df["duration_sec"] < -60) & (df["duration_sec"] >= -3600)
-    df = df[~mask]
-
-    print(f"Removed {initial_len - len(df)} medium error rows")
-    return df
-
-
-def fix_small_time_errors(df):
-    print("Fixing small time inconsistencies...")
-
-    mask = (df["duration_sec"] < 0) & (df["duration_sec"] > -60)
-
-    # align timestamps
-    df.loc[mask, "dropoff_datetime"] = df.loc[mask, "pickup_datetime"]
-
-    return df
-
-
-def remove_duplicates(df):
-    print("Removing duplicates...")
-
-    initial_len = len(df)
-
-    df = df.drop_duplicates()
-
-    print(f"Removed {initial_len - len(df)} duplicate rows")
-    return df
-
-
-# -----------------------------
-# SAVE
-# -----------------------------
-def save_data(df):
-    print("Saving cleaned data...")
-
-    SILVER_PATH.parent.mkdir(parents=True, exist_ok=True)
-    df.to_parquet(SILVER_PATH, index=False)
-
-    print(f"Saved to {SILVER_PATH}")
-
-
-# enrichment
-def add_zones(df):
-    zones = pd.read_csv(BASE_DIR / "storage" / "taxi" / "raw" / "taxi_zones.csv")
-
-    # pickup join
-    df = df.merge(
-        zones,
-        left_on="pickup_location_id",
-        right_on="LocationID",
-        how="left"
+        .getOrCreate()
     )
 
-    df = df.rename(columns={
-    "Borough": "pickup_borough",
-    "Zone": "pickup_zone"
-})
-    
 
-    # dropoff join
-    df = df.merge(
-        zones,
-        left_on="dropoff_location_id",
-        right_on="LocationID",
-        how="left"
-    )
-
-    df = df.rename(columns={
-    "Borough": "dropoff_borough",
-    "Zone": "dropoff_zone"
-})
-    
-    # ---- CLEANUP ----
-    df = df.drop(columns=["LocationID_x", "LocationID_y"])
-
-    return df
-
-
-# -----------------------------
-# ORCHESTRATOR
-# -----------------------------
 def run_cleaning():
-    df = load_data()
+    spark = create_spark()
 
-    # ensure datetime
-    df["pickup_datetime"] = pd.to_datetime(df["pickup_datetime"], errors="coerce")
-    df["dropoff_datetime"] = pd.to_datetime(df["dropoff_datetime"], errors="coerce")
+    print("Loading Bronze data...")
+    df = spark.read.parquet("s3a://nyc-taxi/bronze/yellow_tripdata/")
 
-    df = add_duration(df)
 
-    print("NaN pickup:", df["pickup_datetime"].isna().sum())
-    print("NaN dropoff:", df["dropoff_datetime"].isna().sum())
-    print("NaN duration:", df["duration_sec"].isna().sum())
+    # Rename columns (clean schema)
+    df = df.withColumnRenamed("tpep_pickup_datetime", "pickup_datetime") \
+           .withColumnRenamed("tpep_dropoff_datetime", "dropoff_datetime")
 
-    print("NaN trip_distance:", df["trip_distance"].isna().sum())
-    print("NaN passenger_count:", df["passenger_count"].isna().sum())
 
-    # BEFORE
-    print("\n--- BEFORE CLEANING ---")
-    print("Total rows:", len(df))
-    print("Severe (< -3600):", (df["duration_sec"] < -3600).sum())
-    print("Medium (-60 to -3600):", ((df["duration_sec"] < -60) & (df["duration_sec"] >= -3600)).sum())
-    print("Small (-60 to 0):", ((df["duration_sec"] < 0) & (df["duration_sec"] >= -60)).sum())
+    # Create timestamp columns
+    df = df.withColumn("pickup_ts", unix_timestamp(col("pickup_datetime")))
+    df = df.withColumn("dropoff_ts", unix_timestamp(col("dropoff_datetime")))
+    # Fix small timestamp errors
+    df = df.withColumn(
+        "dropoff_datetime",
+        when(
+            (col("dropoff_ts") - col("pickup_ts") < 0) &
+            (col("dropoff_ts") - col("pickup_ts") > -60),
+            col("pickup_datetime")
+        ).otherwise(col("dropoff_datetime"))
+    )
 
-    # CLEAN
-    df = drop_invalid_rows(df)
-    df = drop_medium_time_errors(df)
-    df = fix_small_time_errors(df)
+    # Recompute dropoff_ts after fixing timestamps
+    df = df.withColumn("dropoff_ts", unix_timestamp(col("dropoff_datetime")))
 
-    # recompute after fixes
-    df = add_duration(df)
+   
+    # Feature: duration 
+    df = df.withColumn(
+        "duration_sec",
+        col("dropoff_ts") - col("pickup_ts")
+    )
 
-    # Remove duration outliers (realistic trips only)
-    before = len(df)
+    
+    # Fill missing values
+    df = df.fillna({"passenger_count": 0})
 
-    df = df[(df["duration_sec"] > 60) & (df["duration_sec"] < 7200)]
+   
+    # Remove invalid durations
+    df = df.filter((col("duration_sec") > 0) & (col("duration_sec") < 7200))
 
-    after = len(df)
-    print(f"Removed {before - after} duration outliers")
+    # Remove distance outliers
+    df = df.filter((col("trip_distance") > 0) & (col("trip_distance") < 30))
 
-    df = remove_duplicates(df)
+    # Remove invalid passengers
+    df = df.filter(col("passenger_count") > 0)
 
-    df = add_zones(df)
+    # Drop duplicates (ONLY ONCE, after filtering)
+    df = df.dropDuplicates([
+        "pickup_datetime",
+        "dropoff_datetime",
+        "PULocationID",
+        "DOLocationID"
+    ])
 
-    # Remove extreme distance outliers (based on distribution analysis)
-    before = len(df)
+    # Repartition for writing (AFTER all transformations)
+    df = df.repartition(4)
+   
+    print("Cleaning completed")
 
-    df = df[(df["trip_distance"] > 0) & (df["trip_distance"] < 30)]
+    df = df.drop("pickup_ts", "dropoff_ts")
 
-    after = len(df)
-    print(f"Removed {before - after} distance outliers")
 
-    # SAVE
-    save_data(df)
+    df.write  \
+            .mode("overwrite") \
+            .partitionBy("PULocationID") \
+            .parquet("s3a://nyc-taxi/silver/clean_trips/")
 
-    # AFTER
-    print("\n--- AFTER CLEANING ---")
+    print("Silver layer completed.")
 
-    print("Total rows:", len(df))
 
-    print(df[["pickup_zone", "dropoff_zone"]].head())
-
-# -----------------------------
 if __name__ == "__main__":
     run_cleaning()

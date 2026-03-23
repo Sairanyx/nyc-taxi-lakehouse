@@ -1,49 +1,43 @@
-import pandas as pd
-from pathlib import Path
-import os
+from pyspark.sql import SparkSession
 
 
+def create_spark():
+    return (
+        SparkSession.builder
+        .appName("Bronze Ingestion")
+        .config("spark.hadoop.fs.s3a.endpoint", "http://localhost:9000")
+        .config("spark.hadoop.fs.s3a.access.key", "admin")
+        .config("spark.hadoop.fs.s3a.secret.key", "password123")
+        .config("spark.hadoop.fs.s3a.path.style.access", "true")
+        .config("spark.hadoop.fs.s3a.connection.ssl.enabled", "false")
+        .getOrCreate()
+    )
 
-#project root -auto detected
-BASE_DIR = Path(__file__).resolve().parent.parent
-
-# data paths
-LOCAL_DATA_PATH = BASE_DIR / "data" / "local"
-RAW_PATH = BASE_DIR / "storage" / "taxi" / "raw"
 
 def run_ingestion():
-    # dynamic path
-    file_path = LOCAL_DATA_PATH / "yellow_tripdata_2025-01.parquet"
-    
+    spark = create_spark()
 
-    df = pd.read_parquet(file_path)
+    print("Reading ALL parquet files from folder...")
 
-    #select only cols needed
-    df = df [[
-            "tpep_pickup_datetime",
-            "tpep_dropoff_datetime",
-            "PULocationID",
-            "DOLocationID",
-            "passenger_count",
-            "trip_distance"
-    ]]
+    df = spark.read.parquet("data/local/yellow_tripdata/")
 
-    #rename cols (standard schema)
-    df = df.rename (columns={
-              "tpep_pickup_datetime": "pickup_datetime",
-        "tpep_dropoff_datetime": "dropoff_datetime",
-        "PULocationID": "pickup_location_id",
-        "DOLocationID": "dropoff_location_id"
-    })  
+    print("Schema:")
+    df.printSchema()
 
-    os.makedirs(RAW_PATH, exist_ok=True)
+    print("Row count:")
+    print(df.count())
 
-    df.to_parquet(RAW_PATH / "trips.parquet", index=False)
+    print("Sample:")
+    df.show(5)
 
-    print("RAW layer created with clean schema")
+    print("Writing to Bronze layer (MinIO)...")
 
-    print("Rows:", len(df))
-    print("Columns:", df.columns.tolist())
+    df.write.mode("overwrite").parquet(
+        "s3a://nyc-taxi/bronze/yellow_tripdata/"
+    )
+
+    print("Bronze layer created successfully.")
+
 
 if __name__ == "__main__":
     run_ingestion()
