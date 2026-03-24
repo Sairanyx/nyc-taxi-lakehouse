@@ -1,13 +1,46 @@
+# =========================
+# Python
+# =========================
+venv/
+__pycache__/
+*.pyc
 
+# =========================
+# Spark
+# =========================
+spark-warehouse/
 
-
-# Project storage (VERY IMPORTANT)
+# =========================
+# Data / Storage (BIG FILES)
+# =========================
 storage/
 *.parquet
-spark-warehouse/venv/
-venv/
-venv/
+
+# =========================
+# Logs
+# =========================
+*.log
+
+# =========================
+# Local configs
+# =========================
+.env
+
+# =========================
+# Test / temp files
+# =========================
 *_backup.py
 pipeline/test_*.py
 pipeline/spark_test.py
 pipeline/spark_jvm_test.py
+
+# =========================
+# System
+# =========================
+.ivy2/
+
+.vscode/
+minio-data/
+*.pem
+*.pub
+eval*

@@ -1,30 +1,16 @@
-from pyspark.sql import SparkSession
+from config.spark_config import create_spark
+from config.settings import BRONZE_PATH, SILVER_PATH
 from pyspark.sql.functions import col, unix_timestamp, when
-
-
-def create_spark():
-    return (
-        SparkSession.builder
-        .appName("Silver Cleaning")
-
-        # MinIO connection
-        .config("spark.hadoop.fs.s3a.endpoint", "http://localhost:9000")
-        .config("spark.hadoop.fs.s3a.access.key", "admin")
-        .config("spark.hadoop.fs.s3a.secret.key", "password123")
-        .config("spark.hadoop.fs.s3a.path.style.access", "true")
-        .config("spark.hadoop.fs.s3a.connection.ssl.enabled", "false")
-
-        .getOrCreate()
-    )
-
+import logging
+logger = logging.getLogger(__name__)
 
 def run_cleaning():
     spark = create_spark()
 
-    print("Loading Bronze data...")
-    df = spark.read.parquet("s3a://nyc-taxi/bronze/yellow_tripdata/")
+    logger.info("Loading Bronze data...")
+    df = spark.read.parquet(BRONZE_PATH)
 
-    print("Sample BEFORE cleaning:")
+    logger.info("Sample BEFORE cleaning:")
     df.show(5)
 
 
@@ -69,7 +55,7 @@ def run_cleaning():
 
     # impossible values
     df = df.filter(col("trip_distance") >= 0)
-    df = df.filter(col("passenger_count") > 0)
+    
 
     # 7. Remove OUTLIERS 
 
@@ -81,33 +67,31 @@ def run_cleaning():
         (col("trip_distance") > 0) & (col("trip_distance") < 30)
     )
 
+    print(df.columns)
 
     # 8. Remove duplicates
     df = df.dropDuplicates([
         "pickup_datetime",
         "dropoff_datetime",
-        "PULocationID",
-        "DOLocationID"
+        "pickup_location_id",
+        "dropoff_location_id"
     ])
 
 
     # 9. Drop columns
     df = df.drop("pickup_ts", "dropoff_ts")
 
-    print("Sample AFTER cleaning:")
-    df.show(5)
+    logger.info(f"Row count after cleaning: {df.count()}")
 
 
     # 10. Repartition 
     df = df.repartition(4)
 
-    print("Writing Silver layer...")
+    logger.info("Writing Silver layer...")
 
-    df.write \
-        .mode("overwrite") \
-        .parquet("s3a://nyc-taxi/silver/clean_trips/")
+    df.write.mode("overwrite").parquet(SILVER_PATH)
 
-    print("Silver layer completed.")
+    logger.info("Silver layer completed.")
 
 
 if __name__ == "__main__":

@@ -1,44 +1,31 @@
-from pyspark.sql import SparkSession
+from config.spark_config import create_spark
+from config.settings import LOCAL_DATA_PATH, BRONZE_PATH
+import sys
+import os
+import logging
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
 
-def create_spark():
-    return (
-        SparkSession.builder
-        .appName("Bronze Ingestion")
-        .config("spark.hadoop.fs.s3a.endpoint", "http://localhost:9000")
-        .config("spark.hadoop.fs.s3a.access.key", "admin")
-        .config("spark.hadoop.fs.s3a.secret.key", "password123")
-        .config("spark.hadoop.fs.s3a.path.style.access", "true")
-        .config("spark.hadoop.fs.s3a.connection.ssl.enabled", "false")
-        .getOrCreate()
-    )
-
+logger = logging.getLogger(__name__)
 
 def run_ingestion():
-    spark = create_spark()
+    spark = create_spark("Bronze Ingestion")
 
-    print("Reading ALL parquet files from folder...")
+    logger.info(f"Reading data from: {LOCAL_DATA_PATH}")
 
-    df = spark.read.parquet("data/local/yellow_tripdata/")
+    df = spark.read.parquet(LOCAL_DATA_PATH)
 
-    print("Schema:")
+    logger.info("Schema:")
     df.printSchema()
 
-    print("Row count:")
-    print(df.count())
+    logger.info(f"Row count: {df.count()}")
 
-    print("Sample:")
-    df.show(5)
+    logger.info("Writing Bronze layer...")
+    df.write.mode("overwrite").parquet(BRONZE_PATH)
 
-    print("Writing to Bronze layer (MinIO)...")
-
-    df.write.mode("overwrite").parquet(
-        "s3a://nyc-taxi/bronze/yellow_tripdata/"
-    )
-
-    print("Bronze layer created successfully.")
+    logger.info("Bronze layer created successfully.")
 
 
 if __name__ == "__main__":
     run_ingestion()
- 

@@ -12,7 +12,4 @@ services:
       MINIO_ROOT_PASSWORD: password123
     command: server /data --console-address ":9001"
     volumes:
-      - minio_data:/data
-
-volumes:
-  minio_data:
+      - ./minio-data:/data
