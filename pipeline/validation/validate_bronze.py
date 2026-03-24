@@ -5,7 +5,7 @@ def create_spark():
     return (
         SparkSession.builder
         .appName("Validate Bronze")
-        .config("spark.hadoop.fs.s3a.endpoint", "http://localhost:9000")
+        .config("spark.hadoop.fs.s3a.endpoint", "http://host.docker.internal:9000")
         .config("spark.hadoop.fs.s3a.access.key", "admin")
         .config("spark.hadoop.fs.s3a.secret.key", "password123")
         .config("spark.hadoop.fs.s3a.path.style.access", "true")

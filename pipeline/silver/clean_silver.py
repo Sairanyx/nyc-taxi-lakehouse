@@ -27,26 +27,22 @@ def run_cleaning():
     print("Sample BEFORE cleaning:")
     df.show(5)
 
-    # -----------------------------
+
     # 1. Rename columns
-    # -----------------------------
     df = df.withColumnRenamed("tpep_pickup_datetime", "pickup_datetime") \
            .withColumnRenamed("tpep_dropoff_datetime", "dropoff_datetime")
 
-    # -----------------------------
+
     # 2. Create timestamps
-    # -----------------------------
     df = df.withColumn("pickup_ts", unix_timestamp(col("pickup_datetime")))
     df = df.withColumn("dropoff_ts", unix_timestamp(col("dropoff_datetime")))
 
-    # -----------------------------
-    # 3. Fix SMALL negative durations (-60 < x < 0)
-    # -----------------------------
+    # 3. Fix durations 
     df = df.withColumn(
         "dropoff_datetime",
         when(
-            (col("dropoff_ts") - col("pickup_ts") < 0) &
-            (col("dropoff_ts") - col("pickup_ts") > -60),
+            (col("dropoff_ts") < col("pickup_ts")) &
+            (col("pickup_ts") - col("dropoff_ts") < 60),
             col("pickup_datetime")
         ).otherwise(col("dropoff_datetime"))
     )
@@ -54,32 +50,29 @@ def run_cleaning():
     # recompute dropoff_ts after fix
     df = df.withColumn("dropoff_ts", unix_timestamp(col("dropoff_datetime")))
 
-    # -----------------------------
+
     # 4. Compute duration
-    # -----------------------------
     df = df.withColumn(
         "duration_sec",
         col("dropoff_ts") - col("pickup_ts")
     )
 
-    # -----------------------------
+
     # 5. Handle missing passengers (DO NOT drop)
-    # -----------------------------
     df = df.fillna({"passenger_count": 0})
 
-    # -----------------------------
+
     # 6. Remove INVALID data
-    # -----------------------------
+
     # severe + medium negative durations
     df = df.filter(col("duration_sec") >= 0)
 
     # impossible values
     df = df.filter(col("trip_distance") >= 0)
-    df = df.filter(col("passenger_count") >= 0)
+    df = df.filter(col("passenger_count") > 0)
 
-    # -----------------------------
-    # 7. Remove OUTLIERS (analysis-ready dataset)
-    # -----------------------------
+    # 7. Remove OUTLIERS 
+
     df = df.filter(
         (col("duration_sec") >= 60) & (col("duration_sec") < 7200)
     )
@@ -88,9 +81,8 @@ def run_cleaning():
         (col("trip_distance") > 0) & (col("trip_distance") < 30)
     )
 
-    # -----------------------------
+
     # 8. Remove duplicates
-    # -----------------------------
     df = df.dropDuplicates([
         "pickup_datetime",
         "dropoff_datetime",
@@ -98,17 +90,15 @@ def run_cleaning():
         "DOLocationID"
     ])
 
-    # -----------------------------
-    # 9. Drop helper columns
-    # -----------------------------
+
+    # 9. Drop columns
     df = df.drop("pickup_ts", "dropoff_ts")
 
     print("Sample AFTER cleaning:")
     df.show(5)
 
-    # -----------------------------
-    # 10. Repartition (small cluster)
-    # -----------------------------
+
+    # 10. Repartition 
     df = df.repartition(4)
 
     print("Writing Silver layer...")

@@ -24,12 +24,12 @@ def main():
 
     print("Loading taxi zones...")
     zones = spark.read.csv(
-        "/mnt/c/Projects/nyc-taxi-lakehouse/storage/taxi/taxi_zone.csv",
+        "s3a://nyc-taxi/reference/taxi_zone.csv",
         header=True,
         inferSchema=True
     )
 
-    #  avoid duplicate column name (LocationID)
+    #  column name 
     zones = zones.withColumnRenamed("LocationID", "zone_LocationID")
 
     # ENRICH DATA

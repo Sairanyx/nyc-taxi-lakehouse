@@ -27,8 +27,8 @@ def run_validation():
     # Print schema to verify structure
     df.printSchema()
 
-    # --- SINGLE PASS AGGREGATION (efficient) ---
-    # We compute ALL checks in one scan of the data
+    # SINGLE PASS AGGREGATION 
+
     agg = df.agg(
         min("duration_sec").alias("min_duration"),
         max("duration_sec").alias("max_duration"),
@@ -42,37 +42,36 @@ def run_validation():
         sum(when(col("duration_sec").isNull(), 1).otherwise(0)).alias("null_duration"),
         sum(when(col("trip_distance").isNull(), 1).otherwise(0)).alias("null_distance"),
         sum(when(col("passenger_count").isNull(), 1).otherwise(0)).alias("null_passengers"),
+        sum(when(col("passenger_count") == 0, 1).otherwise(0)).alias("zero_passengers"),
     )
 
     # Convert Spark Row → Python dict
     result = agg.collect()[0].asDict()
 
-    # --- RANGE CHECK ---
+    #  RANGE CHECK
     print("\n--- DURATION RANGE ---")
     print("min_duration:", result["min_duration"])
     print("max_duration:", result["max_duration"])
 
-    # --- VALIDATION OUTPUT ---
+    #VALIDATION OUTPUT
     print("\n--- VALIDATION CHECKS ---")
     for key, value in result.items():
         if key not in ["min_duration", "max_duration"]:
             print(f"{key}: {value}")
 
-    # --- FAIL CONDITIONS (pipeline safety) ---
-    # These errors should NEVER exist in clean Silver data
+    #  FAIL CONDITIONS 
     critical_errors = [
         "negative_duration",
         "invalid_distance",
         "null_duration",
-        "null_distance",
-        "null_passengers"
+        "null_distance"
     ]
 
     for key in critical_errors:
         if result[key] > 0:
             raise ValueError(f"Validation failed: {key} detected")
 
-    # --- SAMPLE OUTPUT ---
+   
     # Quick sanity check of real rows
     print("\n--- SAMPLE DATA ---")
     df.select(
