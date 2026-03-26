@@ -42,8 +42,8 @@ def get_hourly_demand():
         SELECT hour, ride_count
         FROM read_parquet('s3://{GOLD_PATH}/gold/hourly_demand/*.parquet')
         ORDER BY hour
-    """.fetchall()
-    return[{"hour": row[0], "ride_count": row[1]} for row in result])
+    """).fetchall()
+    return [{"hour": row[0], "ride_count": row[1]} for row in result]
 
 # 2. Demand by borough
 
@@ -70,35 +70,39 @@ def get_popular_routes():
     """).fetchall()
     return [{"from": row[0], "to": row[1], "ride_count": row[2]} for row in result]
 
-# 4. Average duration
+# 4. Average duration per month
 
 @app.get("/avg-duration")
 def get_avg_duration():
     con = get_duckdb()
     result = con.execute(f"""
-        SELECT avg_duration_min
+        SELECT month, avg_duration_min
         FROM read_parquet('s3://{GOLD_PATH}/gold/avg_duration/*.parquet')
-    """).fetchone()
-    return {"avg_duration_min": round(result[0], 2)}
+        ORDER BY month
+    """).fetchall()
+    return [{"month": row[0], "avg_duration_min": round(row[1], 2)} for row in result]
 
-# 5. Average distance
+# 5. Average distance per month
 
 @app.get("/avg-distance")
 def get_avg_distance():
     con = get_duckdb()
     result = con.execute(f"""
-        SELECT avg_distance
+        SELECT month, avg_distance
         FROM read_parquet('s3://{GOLD_PATH}/gold/avg_distance/*.parquet')
-    """).fetchone()
-    return {"avg_distance_miles": round(result[0], 2)}
+        ORDER BY month
+    """).fetchall()
+    return [{"month": row[0], "avg_distance_miles": round(row[1], 2)} for row in result]
 
-# 6. Average passengers
+
+# 6. Average passengers per month
 
 @app.get("/avg-passengers")
 def get_avg_passengers():
     con = get_duckdb()
     result = con.execute(f"""
-        SELECT avg_passenger_count
+        SELECT month, avg_passenger_count
         FROM read_parquet('s3://{GOLD_PATH}/gold/avg_passengers/*.parquet')
-    """).fetchone()
-    return {"avg_passenger_count": round(result[0], 2)}
+        ORDER BY month
+    """).fetchall()
+    return [{"month": row[0], "avg_passenger_count": round(row[1], 2)} for row in result]

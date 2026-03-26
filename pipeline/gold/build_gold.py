@@ -6,7 +6,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")
 
 from config.spark_config import create_spark
 from config.settings import SILVER_PATH, GOLD_PATH, REFERENCE_PATH
-from pyspark.sql.functions import col, hour, count, avg
+from pyspark.sql.functions import col, hour, count, avg, month
 
 logging.basicConfig(
     level=logging.INFO,
@@ -89,32 +89,32 @@ def main():
         f"{GOLD_PATH}/popular_routes/"
     )
 
-    # Q4: Average duration
+    # Q4: Average duration per month
 
-    avg_duration = df.agg(
-        (avg("duration_sec") / 60).alias("avg_duration_min")  # converting to minutes
-    )
+    avg_duration = df.groupBy(month("pickup_datetime").alias("month")) \
+        .agg((avg("duration_sec") / 60).alias("avg_duration_min")) \
+        .orderBy("month")
 
     avg_duration.write.mode("overwrite").parquet(
         f"{GOLD_PATH}/avg_duration/"
     )
 
-    # Q5: Average distance
+    # Q5: Average distance per month
 
-    avg_distance = df.agg(
-        avg("trip_distance").alias("avg_distance")
-    )
+    avg_distance = df.groupBy(month("pickup_datetime").alias("month")) \
+        .agg(avg("trip_distance").alias("avg_distance")) \
+        .orderBy("month")
 
     avg_distance.write.mode("overwrite").parquet(
         f"{GOLD_PATH}/avg_distance/"
     )
 
-    # Q6: Average passengers 
+    # Q6: Average passengers per month
 
-    avg_passengers = df.filter(col("passenger_count") > 0).agg(
-        avg("passenger_count").alias("avg_passenger_count")
-    )
-
+    avg_passengers = df.filter(col("passenger_count") > 0) \
+        .groupBy(month("pickup_datetime").alias("month")) \
+        .agg(avg("passenger_count").alias("avg_passenger_count")) \
+        .orderBy("month")
     avg_passengers.write.mode("overwrite").parquet(
         f"{GOLD_PATH}/avg_passengers/"
     )

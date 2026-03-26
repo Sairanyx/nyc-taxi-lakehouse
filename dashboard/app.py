@@ -32,29 +32,36 @@ st.markdown("NYC Yellow Taxi 2025 - Overview")
 
 # Overview metrics
 
-st.header("Overview")
+st.header("Monthly Averages")
 
-con = get_duckdb()
-
-avg_duration = con.execute(f"""
-    SELECT avg_duration_min
+df_duration = con.execute(f"""
+    SELECT month, avg_duration_min
     FROM read_parquet('s3://{GOLD_PATH}/gold/avg_duration/*.parquet')
-""").fetchone()[0]
+    ORDER BY month
+""").df()
 
-avg_distance = con.execute(f"""
-    SELECT avg_distance
+df_distance = con.execute(f"""
+    SELECT month, avg_distance
     FROM read_parquet('s3://{GOLD_PATH}/gold/avg_distance/*.parquet')
-""").fetchone()[0]
+    ORDER BY month
+""").df()
 
-avg_passengers = con.execute(f"""
-    SELECT avg_passenger_count
+df_passengers = con.execute(f"""
+    SELECT month, avg_passenger_count
     FROM read_parquet('s3://{GOLD_PATH}/gold/avg_passengers/*.parquet')
-""").fetchone()[0]
+    ORDER BY month
+""").df()
 
 col1, col2, col3 = st.columns(3)
-col1.metric("Average Trip Duration", f"{round(avg_duration, 1)} min")
-col2.metric("Average Trip Distance", f"{round(avg_distance, 1)} miles")
-col3.metric("Average Passengers", f"{round(avg_passengers, 2)}")
+with col1:
+    st.subheader("Avg Duration (min)")
+    st.line_chart(df_duration.set_index("month"))
+with col2:
+    st.subheader("Avg Distance (miles)")
+    st.line_chart(df_distance.set_index("month"))
+with col3:
+    st.subheader("Avg Passengers")
+    st.line_chart(df_passengers.set_index("month"))
 
 # Hourly Demand
 

@@ -60,6 +60,7 @@ def run_validation():
         logger.warning("Mismatch between Gold and Silver")
 
     logger.info("Validation complete")
+
     spark.stop()
 
 

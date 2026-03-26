@@ -48,14 +48,18 @@ def run_validation():
     df_routes.filter(col("ride_count") <= 0).show()
 
     # Average metrics
+
     df_duration = spark.read.parquet(f"{GOLD_PATH}/avg_duration/")
     validate_df(df_duration, "Average duration")
+    logger.info(f"Months in avg_duration: {df_duration.count()}")
 
     df_distance = spark.read.parquet(f"{GOLD_PATH}/avg_distance/")
     validate_df(df_distance, "Average distance")
+    logger.info(f"Months in avg_distance: {df_distance.count()}")
 
     df_passengers = spark.read.parquet(f"{GOLD_PATH}/avg_passengers/")
     validate_df(df_passengers, "Average passengers")
+    logger.info(f"Months in avg_passengers: {df_passengers.count()}")
     
     # Final checks
 
