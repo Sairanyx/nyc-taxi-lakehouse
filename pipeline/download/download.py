@@ -5,9 +5,9 @@ import boto3
 import requests
 from pathlib import Path
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
-from config.settings import MINIO_ENDPOINT, MINIO_ACCESS, MINIO_SECRET, BUCKET
+from config.settings import MINIO_ENDPOINT_LOCAL as MINIO_ENDPOINT, MINIO_ACCESS, MINIO_SECRET, BUCKET
 
 logging.basicConfig(
     level=logging.INFO,

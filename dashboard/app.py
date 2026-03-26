@@ -6,7 +6,7 @@ import pandas as pd
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from config.settings import MINIO_ENDPOINT, MINIO_ACCESS, MINIO_SECRET, GOLD_PATH
+from config.settings import MINIO_ENDPOINT, MINIO_ACCESS, MINIO_SECRET, GOLD_PATH_DUCKDB
 
 def get_duckdb():
     con = duckdb.connect()
@@ -30,25 +30,27 @@ st.set_page_config(
 st.title("🚕 NYC Taxi Lakehouse Dashboard")
 st.markdown("NYC Yellow Taxi 2025 - Overview")
 
+con = get_duckdb()
+
 # Overview metrics
 
 st.header("Monthly Averages")
 
 df_duration = con.execute(f"""
     SELECT month, avg_duration_min
-    FROM read_parquet('s3://{GOLD_PATH}/gold/avg_duration/*.parquet')
+    FROM read_parquet('s3://{GOLD_PATH_DUCKDB}/avg_duration/*.parquet')
     ORDER BY month
 """).df()
 
 df_distance = con.execute(f"""
     SELECT month, avg_distance
-    FROM read_parquet('s3://{GOLD_PATH}/gold/avg_distance/*.parquet')
+    FROM read_parquet('s3://{GOLD_PATH_DUCKDB}/avg_distance/*.parquet')
     ORDER BY month
 """).df()
 
 df_passengers = con.execute(f"""
     SELECT month, avg_passenger_count
-    FROM read_parquet('s3://{GOLD_PATH}/gold/avg_passengers/*.parquet')
+    FROM read_parquet('s3://{GOLD_PATH_DUCKDB}/avg_passengers/*.parquet')
     ORDER BY month
 """).df()
 
@@ -69,7 +71,7 @@ st.header("Ride Demand by Hour")
 
 df_hourly = con.execute(f"""
     SELECT hour, ride_count
-    FROM read_parquet('s3://{GOLD_PATH}/gold/hourly_demand/*.parquet')
+    FROM read_parquet('s3://{GOLD_PATH_DUCKDB}/hourly_demand/*.parquet')
     ORDER BY hour
 """).df()
 
@@ -81,7 +83,7 @@ st.header("Ride Demand by Borough")
 
 df_borough = con.execute(f"""
     SELECT Borough, ride_count
-    FROM read_parquet('s3://{GOLD_PATH}/gold/demand_by_borough/*.parquet')
+    FROM read_parquet('s3://{GOLD_PATH_DUCKDB}/demand_by_borough/*.parquet')
     ORDER BY ride_count DESC
 """).df()
 
@@ -93,7 +95,7 @@ st.header("Most Popular Routes")
 
 df_routes = con.execute(f"""
     SELECT Borough, DO_Borough, ride_count
-    FROM read_parquet('s3://{GOLD_PATH}/gold/popular_routes/*.parquet')
+    FROM read_parquet('s3://{GOLD_PATH_DUCKDB}/popular_routes/*.parquet')
     ORDER BY ride_count DESC
     LIMIT 20
 """).df()
