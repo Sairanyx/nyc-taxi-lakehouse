@@ -21,7 +21,6 @@ ENV/
 # Environment variables
 
 .env
-.env.*
 
 # Spark
 
@@ -30,7 +29,7 @@ derby.log
 metastore_db/
 *.crc
 
-# Data files (store in MinIO, not git)
+# Data files (stored in MinIO, not git)
 
 data/
 *.parquet
