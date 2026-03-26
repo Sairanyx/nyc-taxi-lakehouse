@@ -1,24 +1,22 @@
-from pyspark.sql import SparkSession
+import sys
+import os
+import logging
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
+
+from config.spark_config import create_spark
+from config.settings import GOLD_PATH
 from pyspark.sql.functions import col, sum
 
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s — %(message)s",)
 
-def create_spark():
-    return (
-        SparkSession.builder
-        .appName("Validate Gold")
-        .config("spark.hadoop.fs.s3a.endpoint", "http://localhost:9000")
-        .config("spark.hadoop.fs.s3a.access.key", "admin")
-        .config("spark.hadoop.fs.s3a.secret.key", "password123")
-        .config("spark.hadoop.fs.s3a.path.style.access", "true")
-        .config("spark.hadoop.fs.s3a.connection.ssl.enabled", "false")
-        .getOrCreate()
-    )
-
+logger = logging.getLogger(__name__)
 
 def validate_df(df, name):
-    print(f"\n===== {name} =====")
+    logger.info(f"{name}")
     df.printSchema()
-    print("Row count:", df.count())
+    logger.info(f"Row count: {df.count():,}")
 
     df.select([
         sum(col(c).isNull().cast("int")).alias(c)
@@ -29,46 +27,49 @@ def validate_df(df, name):
 
 
 def run_validation():
-    spark = create_spark()
+    spark = create_spark("Validating Gold")
 
-    # hourly demand
-    df_hour = spark.read.parquet("s3a://nyc-taxi/gold/hourly_demand/")
+    # Hourly demand
+
+    df_hour = spark.read.parquet(f"{GOLD_PATH}/hourly_demand/")
     validate_df(df_hour, "Hourly demand")
-
     df_hour.select("hour").distinct().orderBy("hour").show(24)
 
-    # borough
-    df_borough = spark.read.parquet("s3a://nyc-taxi/gold/demand_by_borough/")
+    # Borough demand
+
+    df_borough = spark.read.parquet(f"{GOLD_PATH}/demand_by_borough/")
     df_borough = df_borough.filter(~col("Borough").isin("Unknown", "N/A"))
     validate_df(df_borough, "Demand by borough")
 
-    # routes
-    df_routes = spark.read.parquet("s3a://nyc-taxi/gold/popular_routes/")
-    validate_df(df_routes, "Popular routes")
+    # Popular routes
 
+    df_routes = spark.read.parquet(f"{GOLD_PATH}/popular_routes/")
+    validate_df(df_routes, "Popular routes")
     df_routes.filter(col("ride_count") <= 0).show()
 
-    # summary
-    df_summary = spark.read.parquet("s3a://nyc-taxi/gold/summary_metrics/")
-    validate_df(df_summary, "Summary metrics")
+    # Average metrics
+    df_duration = spark.read.parquet(f"{GOLD_PATH}/avg_duration/")
+    validate_df(df_duration, "Average duration")
 
-    df_summary.filter(col("avg_duration_sec") <= 0).show()
-    df_summary.filter(col("avg_distance") <= 0).show()
-    df_summary.filter(col("avg_passenger_count") <= 0).show()
+    df_distance = spark.read.parquet(f"{GOLD_PATH}/avg_distance/")
+    validate_df(df_distance, "Average distance")
 
+    df_passengers = spark.read.parquet(f"{GOLD_PATH}/avg_passengers/")
+    validate_df(df_passengers, "Average passengers")
     
-    #  FINAL CONSISTENCY CHECK
+    # Final checks
 
-    print("\n=== FINAL CONSISTENCY CHECK ===")
+    logger.info("FINAL CONSISTENCY CHECK")
 
     total_hour = df_hour.agg(sum("ride_count")).first()[0]
     total_borough = df_borough.agg(sum("ride_count")).first()[0]
     total_routes = df_routes.agg(sum("ride_count")).first()[0]
 
-    print("Hourly total:", total_hour)
-    print("Borough total:", total_borough)
-    print("Routes total:", total_routes)
+    logger.info(f"Hourly total:  {total_hour:,}")
+    logger.info(f"Borough total: {total_borough:,}")
+    logger.info(f"Routes total:  {total_routes:,}")
 
+    spark.stop()
 
 if __name__ == "__main__":
     run_validation()

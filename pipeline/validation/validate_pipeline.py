@@ -1,71 +1,66 @@
-from pyspark.sql import SparkSession
+import sys
+import os
+import logging
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
+
+from config.spark_config import create_spark
+from config.settings import BRONZE_PATH, SILVER_PATH, GOLD_PATH
 from pyspark.sql.functions import sum as spark_sum
 
-
-def create_spark():
-    return (
-        SparkSession.builder
-        .appName("Pipeline Consistency Check")
-        .config("spark.hadoop.fs.s3a.endpoint", "http://localhost:9000")
-        .config("spark.hadoop.fs.s3a.access.key", "admin")
-        .config("spark.hadoop.fs.s3a.secret.key", "password123")
-        .config("spark.hadoop.fs.s3a.path.style.access", "true")
-        .config("spark.hadoop.fs.s3a.connection.ssl.enabled", "false")
-        .getOrCreate()
-    )
-
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s — %(message)s",
+)
+logger = logging.getLogger(__name__)
 
 def run_validation():
-    spark = create_spark()
+    spark = create_spark("Pipeline Consistency Check")
 
-    print("\n--- LOADING DATA ---")
+    # Loading data
 
-    bronze = spark.read.parquet("s3a://nyc-taxi/bronze/yellow_tripdata/")
-    silver = spark.read.parquet("s3a://nyc-taxi/silver/clean_trips/")
-    gold_hourly = spark.read.parquet("s3a://nyc-taxi/gold/hourly_demand/")
+    logger.info("LOADING DATA")
+    bronze = spark.read.parquet(BRONZE_PATH)
+    silver = spark.read.parquet(SILVER_PATH)
+    gold_hourly = spark.read.parquet(f"{GOLD_PATH}/hourly_demand/")
 
-    # -----------------------------
-    # ROW COUNTS
-    # -----------------------------
+    # Row counts
+
     bronze_count = bronze.count()
     silver_count = silver.count()
 
-    print("\n--- ROW COUNTS ---")
-    print(f"Bronze rows: {bronze_count}")
-    print(f"Silver rows: {silver_count}")
+    logger.info("ROW COUNTS")
+    logger.info(f"Bronze rows: {bronze_count:,}")
+    logger.info(f"Silver rows: {silver_count:,}")
 
-    # -----------------------------
-    # DATA LOSS CHECK
-    # -----------------------------
+    # Data loss check
+
     loss = bronze_count - silver_count
     loss_pct = (loss / bronze_count) * 100
 
-    print("\n--- DATA LOSS ---")
-    print(f"Rows removed: {loss}")
-    print(f"Percentage removed: {loss_pct:.2f}%")
+    logger.info("DATA LOSS")
+    logger.info(f"Rows removed: {loss:,}")
+    logger.info(f"Percentage removed: {loss_pct:.2f}%")
 
-    # sanity expectation
     if loss <= 0:
-        print("⚠️ WARNING: No rows removed → cleaning may not be working")
+        logger.warning("No rows were removed so cleaning may not be working")
 
-    # -----------------------------
-    # GOLD CONSISTENCY CHECK
-    # -----------------------------
-    print("\n--- GOLD CONSISTENCY ---")
+    # Gold consistency check
 
+    logger.info("GOLD CONSISTENCY")
     gold_total = gold_hourly.select(
         spark_sum("ride_count")
     ).collect()[0][0]
 
-    print(f"Total rides in Silver: {silver_count}")
-    print(f"Total rides in Gold (hourly sum): {gold_total}")
+    logger.info(f"Total rides in Silver: {silver_count:,}")
+    logger.info(f"Total rides in Gold (hourly sum): {gold_total:,}")
 
     if gold_total == silver_count:
-        print("✔ Gold matches Silver (correct aggregation)")
+        logger.info("Gold matches Silver")
     else:
-        print("❌ Mismatch between Gold and Silver!")
+        logger.warning("Mismatch between Gold and Silver")
 
-    print("\nValidation complete.")
+    logger.info("Validation complete")
+    spark.stop()
 
 
 if __name__ == "__main__":

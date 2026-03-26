@@ -1,39 +1,36 @@
-from pyspark.sql import SparkSession
+import sys
+import os
+import logging
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
+
+from config.spark_config import create_spark
+from config.settings import SILVER_PATH
 from pyspark.sql.functions import col, sum, when, min, max
 
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s — %(message)s",)
 
-def create_spark():
-    return (
-        SparkSession.builder
-        .appName("Validate Silver")
-
-        # MinIO connection (S3-compatible storage)
-        .config("spark.hadoop.fs.s3a.endpoint", "http://localhost:9000")
-        .config("spark.hadoop.fs.s3a.access.key", "admin")
-        .config("spark.hadoop.fs.s3a.secret.key", "password123")
-        .config("spark.hadoop.fs.s3a.path.style.access", "true")
-        .config("spark.hadoop.fs.s3a.connection.ssl.enabled", "false")
-
-        .getOrCreate()
-    )
-
+logger = logging.getLogger(__name__)
 
 def run_validation():
-    spark = create_spark()
+    spark = create_spark("Validating Silver")
 
-    print("Loading Silver data...")
-    df = spark.read.parquet("s3a://nyc-taxi/silver/clean_trips/")
+    logger.info("Loading Silver data...")
+    df = spark.read.parquet(SILVER_PATH)
 
-    # Print schema to verify structure
+    # Printing schema to verify the structure
+
     df.printSchema()
 
-    # SINGLE PASS AGGREGATION 
+    # Single Pass aggregation
 
     agg = df.agg(
         min("duration_sec").alias("min_duration"),
         max("duration_sec").alias("max_duration"),
 
-        # Data quality checks
+        # Checking Data Quality
+
         sum(when(col("duration_sec") < 0, 1).otherwise(0)).alias("negative_duration"),
         sum(when(col("trip_distance") <= 0, 1).otherwise(0)).alias("invalid_distance"),
         sum(when(col("passenger_count") < 0, 1).otherwise(0)).alias("negative_passengers"),
@@ -45,21 +42,25 @@ def run_validation():
         sum(when(col("passenger_count") == 0, 1).otherwise(0)).alias("zero_passengers"),
     )
 
-    # Convert Spark Row → Python dict
+    # Converting Spark Rows to Python dictionary
+
     result = agg.collect()[0].asDict()
 
-    #  RANGE CHECK
-    print("\n--- DURATION RANGE ---")
-    print("min_duration:", result["min_duration"])
-    print("max_duration:", result["max_duration"])
+    # Checking range check
 
-    #VALIDATION OUTPUT
-    print("\n--- VALIDATION CHECKS ---")
+    logger.info("DURATION RANGE")
+    logger.info(f"min_duration: {result['min_duration']}")
+    logger.info(f"max_duration: {result['max_duration']}")
+
+    # Checking validation output
+
+    logger.info("VALIDATION CHECKS")
     for key, value in result.items():
         if key not in ["min_duration", "max_duration"]:
-            print(f"{key}: {value}")
+            logger.info(f"{key}: {value}")
 
-    #  FAIL CONDITIONS 
+    # Checking fail conditions
+
     critical_errors = [
         "negative_duration",
         "invalid_distance",
@@ -71,9 +72,9 @@ def run_validation():
         if result[key] > 0:
             raise ValueError(f"Validation failed: {key} detected")
 
-   
-    # Quick sanity check of real rows
-    print("\n--- SAMPLE DATA ---")
+    # Checking for real rows
+
+    logger.info("SAMPLE DATA")
     df.select(
         "pickup_datetime",
         "dropoff_datetime",
@@ -82,7 +83,8 @@ def run_validation():
         "passenger_count"
     ).show(5)
 
-    print("\nValidation complete.")
+    logger.info("Validation complete.")
+    spark.stop()
 
 
 if __name__ == "__main__":

@@ -1,30 +1,30 @@
-from pyspark.sql import SparkSession
+import sys
+import os
+import logging
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
+from config.spark_config import create_spark
+from config.settings import BRONZE_PATH
 
-def create_spark():
-    return (
-        SparkSession.builder
-        .appName("Validate Bronze")
-        .config("spark.hadoop.fs.s3a.endpoint", "http://host.docker.internal:9000")
-        .config("spark.hadoop.fs.s3a.access.key", "admin")
-        .config("spark.hadoop.fs.s3a.secret.key", "password123")
-        .config("spark.hadoop.fs.s3a.path.style.access", "true")
-        .config("spark.hadoop.fs.s3a.connection.ssl.enabled", "false")
-        .getOrCreate()
-    )
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s — %(message)s",)
+
+logger = logging.getLogger(__name__)
 
 
 def run_validation():
-    spark = create_spark()
+    spark = create_spark("Validating Bronze")
 
-    df = spark.read.parquet("s3a://nyc-taxi/bronze/yellow_tripdata/")
+    logger.info(f"Reading Bronze layer from: {BRONZE_PATH}")
+    df = spark.read.parquet(BRONZE_PATH)
 
-    print("Rows:", df.count())
-    print("Columns:", df.columns)
-
+    logger.info(f"Rows: {df.count():,}")
+    logger.info(f"Columns: {df.columns}")
     df.printSchema()
     df.show(5)
 
+    spark.stop()
 
 if __name__ == "__main__":
     run_validation()
