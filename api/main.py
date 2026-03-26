@@ -1,9 +1,12 @@
+import sys
 import os
 import duckdb
 from fastapi import FastAPI
-from dotenv import load_dotenv
 
-load_dotenv()
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
+from config.settings import MINIO_ENDPOINT, MINIO_ACCESS, MINIO_SECRET, GOLD_PATH
+
 
 app = FastAPI(
     title="NYC Taxi Lakehouse API",
