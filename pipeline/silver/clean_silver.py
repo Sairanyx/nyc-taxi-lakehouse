@@ -16,96 +16,108 @@ logger = logging.getLogger(__name__)
 
 def run_cleaning():
     spark = create_spark("Silver Cleaning")
-
     logger.info("Loading Bronze data...")
-    df = spark.read.parquet(BRONZE_PATH)
 
-    logger.info("Sample BEFORE cleaning:")
-    df.show(5)
-
-
-    # 1. Rename columns
-
-    df = df.withColumnRenamed("tpep_pickup_datetime", "pickup_datetime") \
-           .withColumnRenamed("tpep_dropoff_datetime", "dropoff_datetime") \
-           .withColumnRenamed("PULocationID", "pickup_location_id") \
-           .withColumnRenamed("DOLocationID", "dropoff_location_id")
-
-
-    # 2. Create timestamps
-
-    df = df.withColumn("pickup_ts", unix_timestamp(col("pickup_datetime")))
-    df = df.withColumn("dropoff_ts", unix_timestamp(col("dropoff_datetime")))
-
-    # 3. Fix durations 
-
-    df = df.withColumn(
-        "dropoff_datetime",
-        when(
-            (col("dropoff_ts") < col("pickup_ts")) &
-            (col("pickup_ts") - col("dropoff_ts") < 60),
-            col("pickup_datetime")
-        ).otherwise(col("dropoff_datetime"))
-    )
-
-    # recompute dropoff_ts after fix
-
-    df = df.withColumn("dropoff_ts", unix_timestamp(col("dropoff_datetime")))
-
-
-    # 4. Compute duration
-
-    df = df.withColumn(
-        "duration_sec",
-        col("dropoff_ts") - col("pickup_ts")
-    )
-
-
-    # 5. Handle missing passengers (DO NOT drop)
-
-    df = df.fillna({"passenger_count": 0})
-
-
-    # 6. Remove INVALID data
-
-    # severe + medium negative durations
-
-    df = df.filter(col("duration_sec") >= 0)
-
-    # impossible values
-
-    df = df.filter(col("trip_distance") >= 0)
+    # Processing one month at a time to avoid running out of memory
     
+    months = [f"2025-{m:02d}" for m in range(1, 13)]
+    total_rows = 0
 
-    # 7. Remove OUTLIERS 
+    for i, month in enumerate(months):
+        try:
+            df = spark.read.parquet(BRONZE_PATH)
+            year, mon = month.split("-")
+            next_month = f"{year}-{int(mon)+1:02d}-01" if int(mon) < 12 else f"{int(year)+1}-01-01"
+            df = df.filter(
+                (col("tpep_pickup_datetime") >= f"{month}-01") &
+                (col("tpep_pickup_datetime") < next_month)
+            )
 
-    df = df.filter(
-        (col("duration_sec") >= 60) & (col("duration_sec") < 7200)
-    )
-    df = df.filter(
-        (col("trip_distance") > 0) & (col("trip_distance") < 30)
-    )
+            # 1. Renaming columns
 
-    # 8. Remove duplicates
+            df = df.withColumnRenamed("tpep_pickup_datetime", "pickup_datetime") \
+                   .withColumnRenamed("tpep_dropoff_datetime", "dropoff_datetime") \
+                   .withColumnRenamed("PULocationID", "pickup_location_id") \
+                   .withColumnRenamed("DOLocationID", "dropoff_location_id")
 
-    df = df.dropDuplicates([
-        "pickup_datetime",
-        "dropoff_datetime",
-        "pickup_location_id",
-        "dropoff_location_id"
-    ])
+            # 2. Creating timestamps
 
-    # 9. Drop columns
+            df = df.withColumn("pickup_ts", unix_timestamp(col("pickup_datetime")))
+            df = df.withColumn("dropoff_ts", unix_timestamp(col("dropoff_datetime")))
 
-    df = df.drop("pickup_ts", "dropoff_ts")
+            # 3. Fixing durations
 
-    # 10. Repartition 
+            df = df.withColumn(
+                "dropoff_datetime",
+                when(
+                    (col("dropoff_ts") < col("pickup_ts")) &
+                    (col("pickup_ts") - col("dropoff_ts") < 60),
+                    col("pickup_datetime")
+                ).otherwise(col("dropoff_datetime"))
+            )
+            # Recomputing dropoff_ts after fix
 
-    df = df.repartition(4)
-    logger.info("Writing Silver layer...")
-    df.write.mode("overwrite").parquet(SILVER_PATH)
-    silver_count = df.count()
-    logger.info(f"Silver layer completed. Rows: {silver_count:,}")
+            df = df.withColumn("dropoff_ts", unix_timestamp(col("dropoff_datetime")))
+
+            # 4. Computing duration
+
+            df = df.withColumn(
+                "duration_sec",
+                col("dropoff_ts") - col("pickup_ts")
+            )
+
+            # 5. Handling missing passengers
+
+            df = df.fillna({"passenger_count": 0})
+
+            # 6. Removing the invalid data
+            # severe + medium negative durations
+
+            df = df.filter(col("duration_sec") >= 0)
+
+            # impossible values
+
+            df = df.filter(col("trip_distance") >= 0)
+
+            # 7. Removing the outliers
+
+            df = df.filter(
+                (col("duration_sec") >= 60) & (col("duration_sec") < 7200)
+            )
+            df = df.filter(
+                (col("trip_distance") > 0) & (col("trip_distance") < 30)
+            )
+
+            # 8. Removing the duplicates
+
+            df = df.dropDuplicates([
+                "pickup_datetime",
+                "dropoff_datetime",
+                "pickup_location_id",
+                "dropoff_location_id"
+            ])
+
+            # 9. Droping columns
+
+            df = df.drop("pickup_ts", "dropoff_ts")
+
+            # 10. Repartition
+
+            df = df.repartition(4).cache()
+
+            mode = "overwrite" if i == 0 else "append"
+            count = df.count()
+            df.write.mode(mode).parquet(SILVER_PATH)
+            total_rows += count
+            df.unpersist()
+
+            spark.catalog.clearCache()
+            logger.info(f"  {month}: written to silver")
+
+        except Exception as e:
+            logger.warning(f"  Skipping {month}: {e}")
+
+    logger.info(f"Silver layer complete. Rows: {total_rows:,}")
 
     spark.stop()
 

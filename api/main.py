@@ -40,7 +40,7 @@ def get_hourly_demand():
     con = get_duckdb()
     result = con.execute(f"""
         SELECT hour, ride_count
-        FROM read_parquet('s3://{GOLD_PATH_DUCKDB}/hourly_demand/*.parquet')
+        FROM read_parquet('{GOLD_PATH_DUCKDB}/hourly_demand/*.parquet')
         ORDER BY hour
     """).fetchall()
     return [{"hour": row[0], "ride_count": row[1]} for row in result]
@@ -52,7 +52,7 @@ def get_demand_by_borough():
     con = get_duckdb()
     result = con.execute(f"""
         SELECT Borough, ride_count
-        FROM read_parquet('s3://{GOLD_PATH_DUCKDB}/demand_by_borough/*.parquet')
+        FROM read_parquet('{GOLD_PATH_DUCKDB}/demand_by_borough/*.parquet')
         ORDER BY ride_count DESC
     """).fetchall()
     return [{"borough": row[0], "ride_count": row[1]} for row in result]
@@ -64,7 +64,7 @@ def get_popular_routes():
     con = get_duckdb()
     result = con.execute(f"""
         SELECT Borough, DO_Borough, ride_count
-        FROM read_parquet('s3://{GOLD_PATH_DUCKDB}/popular_routes/*.parquet')
+        FROM read_parquet('{GOLD_PATH_DUCKDB}/popular_routes/*.parquet')
         ORDER BY ride_count DESC
         LIMIT 20
     """).fetchall()
@@ -77,7 +77,7 @@ def get_avg_duration():
     con = get_duckdb()
     result = con.execute(f"""
         SELECT month, avg_duration_min
-        FROM read_parquet('s3://{GOLD_PATH_DUCKDB}/avg_duration/*.parquet')
+        FROM read_parquet('{GOLD_PATH_DUCKDB}/avg_duration/*.parquet')
         ORDER BY month
     """).fetchall()
     return [{"month": row[0], "avg_duration_min": round(row[1], 2)} for row in result]
@@ -89,7 +89,7 @@ def get_avg_distance():
     con = get_duckdb()
     result = con.execute(f"""
         SELECT month, avg_distance
-        FROM read_parquet('s3://{GOLD_PATH_DUCKDB}/avg_distance/*.parquet')
+        FROM read_parquet('{GOLD_PATH_DUCKDB}/avg_distance/*.parquet')
         ORDER BY month
     """).fetchall()
     return [{"month": row[0], "avg_distance_miles": round(row[1], 2)} for row in result]
@@ -102,7 +102,7 @@ def get_avg_passengers():
     con = get_duckdb()
     result = con.execute(f"""
         SELECT month, avg_passenger_count
-        FROM read_parquet('s3://{GOLD_PATH_DUCKDB}/avg_passengers/*.parquet')
+        FROM read_parquet('{GOLD_PATH_DUCKDB}/avg_passengers/*.parquet')
         ORDER BY month
     """).fetchall()
     return [{"month": row[0], "avg_passenger_count": round(row[1], 2)} for row in result]
