@@ -1,3 +1,7 @@
+"""
+Creates a Spark session configured to connect to MinIO.
+"""
+
 import os
 from dotenv import load_dotenv
 from pyspark.sql import SparkSession
@@ -5,11 +9,12 @@ from pyspark.sql import SparkSession
 load_dotenv()
 
 def create_spark(app_name="NYC Taxi Lakehouse"):
+    """Builds and returns a SparkSession with MinIO and memory settings."""
     return (
         SparkSession.builder
         .appName(app_name)
 
-        # MinIO / S3A
+        # Connecting Spark to MinIO using the S3A connector
         
         .config("spark.hadoop.fs.s3a.endpoint", os.getenv("MINIO_ENDPOINT", "http://minio:9000"))
         .config("spark.hadoop.fs.s3a.access.key", os.getenv("MINIO_ROOT_USER"))

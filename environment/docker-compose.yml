@@ -1,10 +1,17 @@
+# Docker Compose for the NYC Taxi Lakehouse
+# Starts all services with: docker compose up --build
+#
+# Services:
+#   minio       - Object storage (http://localhost:9001)
+#   minio-init  - Creates the taxi bucket on first startup
+#   spark-master - Spark coordinator (http://localhost:8080)
+#   spark-worker - Spark executor
+#   api          - FastAPI analytical endpoints (http://localhost:8000/docs)
+#   dashboard    - Streamlit dashboard (http://localhost:8501)
+
 services:
 
-  # =================================
-  # MinIO: Object Storage
-  # Console: http://localhost:9001
-  # API:     http://localhost:9000
-  # =================================
+  # MinIO: object storage
 
   minio:
     image: quay.io/minio/minio:latest
@@ -24,9 +31,7 @@ services:
       timeout: 5s
       retries: 5
 
-  # ======================================================
-  # MinIO Init: creates the taxi bucket on first startup
-  # ======================================================
+  # MinIO Init: creates the taxi bucket on first start up
 
   minio-init:
     image: quay.io/minio/mc:latest
@@ -41,52 +46,44 @@ services:
         mc mb --ignore-existing local/taxi &&
         echo 'Bucket ready.'"
 
-  # =========================================
-  # Apache Spark - master node
-  # Web UI: http://localhost:8080
-  # =========================================
+  # Spark master: coordinates the Spark cluster (UI at http://localhost:8080)
 
   spark-master:
-      build:
-        context: ..
-        dockerfile: environment/Dockerfile.spark
-      container_name: spark-master
-      environment:
-        - SPARK_NO_DAEMONIZE=true
-      command: /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master
-      ports:
-        - "8080:8080"
-        - "7077:7077"
-      volumes:
-        - ../pipeline:/opt/pipeline
-        - ../config:/opt/config
-        - ../data:/opt/data
-        - ../environment/.env:/opt/environment/.env
+    build:
+      context: ..
+      dockerfile: environment/Dockerfile.spark
+    container_name: spark-master
+    environment:
+      - SPARK_NO_DAEMONIZE=true
+    command: /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master
+    ports:
+      - "8080:8080"
+      - "7077:7077"
+    volumes:
+      - ../pipeline:/opt/pipeline
+      - ../config:/opt/config
+      - ../data:/opt/data
+      - ../environment/.env:/opt/environment/.env
 
-  # =========================================
-  # Apache Spark - worker node
-  # =========================================
+  # Spark worker: executes the actual Spark tasks
 
   spark-worker:
-      build:
-        context: ..
-        dockerfile: environment/Dockerfile.spark
-      container_name: spark-worker
-      environment:
-        - SPARK_NO_DAEMONIZE=true
-      command: /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077
-      depends_on:
-        - spark-master
-      volumes:
-        - ../pipeline:/opt/pipeline
-        - ../config:/opt/config
-        - ../data:/opt/data
-        - ../environment/.env:/opt/environment/.env
+    build:
+      context: ..
+      dockerfile: environment/Dockerfile.spark
+    container_name: spark-worker
+    environment:
+      - SPARK_NO_DAEMONIZE=true
+    command: /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077
+    depends_on:
+      - spark-master
+    volumes:
+      - ../pipeline:/opt/pipeline
+      - ../config:/opt/config
+      - ../data:/opt/data
+      - ../environment/.env:/opt/environment/.env
 
-  # =========================================
-  # FastAPI - analytical API server
-  # Docs: http://localhost:8000/docs
-  # =========================================
+  # FastAPI: analytics REST API (docs at http://localhost:8000/docs)
 
   api:
     build:
@@ -110,10 +107,7 @@ services:
         condition: service_healthy
     command: uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
 
-  # =========================================
-  # Streamlit - gold layer dashboard
-  # URL: http://localhost:8501
-  # =========================================
+  # Streamlit: gold layer dashboard (http://localhost:8501)
 
   dashboard:
     build:

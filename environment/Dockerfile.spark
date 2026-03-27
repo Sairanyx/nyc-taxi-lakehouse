@@ -1,6 +1,12 @@
+# Spark service that extends the official Spark image with Python packages
+# and the Hadoop AWS JARs needed to read/write from MinIO via S3A
+
 FROM apache/spark:3.5.1
 
 USER root
+
+# Installs Python packages needed by the pipeline scripts
+# Here pandas are pinned to 2.0.3 because the Spark image uses Python 3.8
 
 RUN pip3 install --no-cache-dir \
     boto3==1.34.69 \
@@ -9,11 +15,14 @@ RUN pip3 install --no-cache-dir \
     pyarrow==15.0.2 \
     pandas==2.0.3
 
+# Downloads Hadoop AWS JARs for S3A connector (required for MinIO access, wouldn't work otherwise)
+
 RUN curl -o /opt/spark/jars/hadoop-aws-3.3.4.jar \
     https://repo1.maven.org/maven2/org/apache/hadoop/hadoop-aws/3.3.4/hadoop-aws-3.3.4.jar && \
     curl -o /opt/spark/jars/aws-java-sdk-bundle-1.12.262.jar \
     https://repo1.maven.org/maven2/com/amazonaws/aws-java-sdk-bundle/1.12.262/aws-java-sdk-bundle-1.12.262.jar
 
+# Makes pipeline and config folders importable as Python modules
 
 ENV PYTHONPATH=/opt/pipeline:/opt
 

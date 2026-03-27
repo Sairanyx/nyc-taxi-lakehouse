@@ -1,3 +1,7 @@
+"""
+Streamlit dashboard for exploring NYC Yellow Taxi 2025 trip data.
+"""
+
 import sys
 import os
 import duckdb
@@ -9,6 +13,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from config.settings import MINIO_ENDPOINT, MINIO_ACCESS, MINIO_SECRET, GOLD_PATH_DUCKDB
 
 def get_duckdb():
+    """Creates a DuckDB connection configured to read from MinIO."""
     con = duckdb.connect()
     con.execute(f"""
         SET s3_endpoint='{MINIO_ENDPOINT.replace("http://", "")}';
@@ -32,7 +37,7 @@ st.markdown("NYC Yellow Taxi 2025 - Overview")
 
 con = get_duckdb()
 
-# Overview metrics
+# Monthly averages
 
 st.header("Monthly Averages")
 
@@ -65,7 +70,7 @@ with col3:
     st.subheader("Avg Passengers")
     st.line_chart(df_passengers.set_index("month"))
 
-# Hourly Demand
+# Ride demand by hour
 
 st.header("Ride Demand by Hour")
 
@@ -77,7 +82,7 @@ df_hourly = con.execute(f"""
 
 st.bar_chart(df_hourly.set_index("hour"))
 
-# Borough demand
+# Ride demand by borough
 
 st.header("Ride Demand by Borough")
 
@@ -89,7 +94,7 @@ df_borough = con.execute(f"""
 
 st.bar_chart(df_borough.set_index("Borough"))
 
-# Popular routes
+# Most popular routes
 
 st.header("Most Popular Routes")
 

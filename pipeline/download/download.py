@@ -1,3 +1,10 @@
+"""
+Downloads NYC Yellow Taxi 2025 trip data and the Taxi Zone Lookup CSV
+from the TLC website and uploads them to MinIO under taxi/raw/.
+
+This script is meant to be run once before starting the Spark pipeline.
+"""
+
 import sys
 import os
 import logging
@@ -6,7 +13,6 @@ import requests
 from pathlib import Path
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
-
 from config.settings import MINIO_ENDPOINT_LOCAL as MINIO_ENDPOINT, MINIO_ACCESS, MINIO_SECRET, BUCKET
 
 logging.basicConfig(
@@ -28,8 +34,9 @@ MONTHS   = [f"{m:02d}" for m in range(1, 13)]
 
 
 def download_file(url, save_path):
+    """Downloads a file from a URL and saves it locally in 8MB chunks."""
 
-    # Skip if already downloaded
+    # Skips if already downloaded
 
     if save_path.exists():
         logger.info(f"[SKIP] {save_path.name} already downloaded")
@@ -38,7 +45,7 @@ def download_file(url, save_path):
     logger.info(f"[DOWNLOAD] {url}")
     response = requests.get(url, stream=True)
 
-    # Save file in chunks to avoid loading it all into memory
+    # Saves file in chunks to avoid loading it all into memory
 
     save_path.parent.mkdir(parents=True, exist_ok=True)
     with open(save_path, "wb") as f:
@@ -50,9 +57,7 @@ def download_file(url, save_path):
 
 
 def upload_to_minio(s3, file_path, filename):
-
-    # Upload file to MinIO under taxi/raw/
-
+    """Uploads a local file to the taxi/raw/ folder in MinIO."""
     s3.upload_file(
         Filename=str(file_path),
         Bucket=BUCKET,
@@ -62,12 +67,13 @@ def upload_to_minio(s3, file_path, filename):
 
 
 def main():
+    """Downloads all 12 months of the trip data and the zone lookup CSV and then uploads to MinIO."""
 
-    # Create local staging folder if it doesn't exist
+    # Creates a local staging folder if it doesn't exist already
 
     LOCAL_DATA_DIR.mkdir(parents=True, exist_ok=True)
 
-    # Connect to MinIO
+    # Connects to MinIO
 
     s3 = boto3.client(
         "s3",
@@ -77,7 +83,7 @@ def main():
     )
     logger.info(f"Connected to MinIO at {MINIO_ENDPOINT}")
 
-    # Download and upload all 12 months of Yellow Taxi data
+    # Downloads and upload all 12 months of Yellow Taxi data
 
     logger.info("Downloading Yellow Taxi trip data ...")
     for month in MONTHS:
@@ -86,7 +92,7 @@ def main():
         if download_file(f"{BASE_URL}/{filename}", save_path):
             upload_to_minio(s3, save_path, filename)
 
-    # Download and upload the Zone Lookup CSV
+    # Downloads and uploads the Zone Lookup CSV (this is used for borough/zone name joins)
 
     logger.info("Downloading Taxi Zone Lookup CSV ...")
     zone_path = LOCAL_DATA_DIR / "taxi_zone_lookup.csv"

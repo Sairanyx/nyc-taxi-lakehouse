@@ -1,9 +1,19 @@
+# Dashboard service that runs the Streamlit dashboard on port 8501
+
 FROM python:3.11-slim
 
 WORKDIR /app
 
+# Installs Python dependencies
+
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+
+# Pre-installs DuckDB httpfs extension for S3/MinIO access (wouldn't work otherwise)
+
+RUN python3 -c "import duckdb; con = duckdb.connect(); con.execute('INSTALL httpfs'); con.close()"
+
+# Copies application code
 
 COPY dashboard/ ./dashboard/
 COPY config/ ./config/

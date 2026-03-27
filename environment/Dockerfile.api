@@ -1,11 +1,19 @@
+# API service that runs the FastAPI analytics server on port 8000
+
 FROM python:3.11-slim
 
 WORKDIR /app
 
-COPY requirements.txt .
+# Installs Python dependencies
 
+COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+
+# Pre-installs DuckDB httpfs extension for S3/MinIO access
+
 RUN python3 -c "import duckdb; con = duckdb.connect(); con.execute('INSTALL httpfs'); con.close()"
+
+# Copies application code
 
 COPY api/ ./api/
 COPY config/ ./config/

@@ -1,6 +1,4 @@
-# =========================
 # Python
-# =========================
 
 venv/
 __pycache__/
@@ -14,56 +12,42 @@ build/
 .eggs/
 *.egg
 
-# =========================
 # Virtual environments
-# =========================
 
 .venv/
 venv/
 env/
 ENV/
 
-# =========================
 # Environment variables
-# =========================
 
 .env
 !.env.example
 
-# =========================
 # Spark
-# =========================
 
 spark-warehouse/
 derby.log
 metastore_db/
 *.crc
 
-# =========================
-# Data files (stored in MinIO, not git)
-# =========================
+# Data files
 
 data/
 *.parquet
 
-# =========================
 # Logs
-# =========================
 
 *.log
 
-# =========================
 # Test / temp files
-# =========================
 
 *_backup.py
 pipeline/test_*.py
 pipeline/spark_test.py
 pipeline/spark_jvm_test.py
 
-# =========================
 # System
-# =========================
 
 .ivy2/
 .vscode/

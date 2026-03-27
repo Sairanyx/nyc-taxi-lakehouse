@@ -1,8 +1,10 @@
+"""Checks consistency across the full pipeline, bronze, silver, and gold row counts."""
+
 import sys
 import os
 import logging
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 from config.spark_config import create_spark
 from config.settings import BRONZE_PATH, SILVER_PATH, GOLD_PATH
 from pyspark.sql.functions import sum as spark_sum
@@ -13,54 +15,57 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+
 def run_validation():
+    """
+    Loads bronze, silver, and gold data and checks:
+    - How many rows were removed during cleaning
+    - Whether the gold hourly total matches the silver row count
+    """
     spark = create_spark("Pipeline Consistency Check")
 
-    # Loading data
+    # Loads all three layers
 
     logger.info("LOADING DATA")
-    bronze = spark.read.parquet(BRONZE_PATH)
-    silver = spark.read.parquet(SILVER_PATH)
+    bronze     = spark.read.parquet(BRONZE_PATH)
+    silver     = spark.read.parquet(SILVER_PATH)
     gold_hourly = spark.read.parquet(f"{GOLD_PATH}/hourly_demand/")
 
-    # Row counts
+    # Row counts per layer
 
     bronze_count = bronze.count()
     silver_count = silver.count()
 
     logger.info("ROW COUNTS")
-    logger.info(f"Bronze rows: {bronze_count:,}")
-    logger.info(f"Silver rows: {silver_count:,}")
+    logger.info(f"  Bronze rows: {bronze_count:,}")
+    logger.info(f"  Silver rows: {silver_count:,}")
 
-    # Data loss check
+    # Data loss between bronze and silver
 
-    loss = bronze_count - silver_count
+    loss     = bronze_count - silver_count
     loss_pct = (loss / bronze_count) * 100
 
     logger.info("DATA LOSS")
-    logger.info(f"Rows removed: {loss:,}")
-    logger.info(f"Percentage removed: {loss_pct:.2f}%")
+    logger.info(f"  Rows removed: {loss:,}")
+    logger.info(f"  Percentage removed: {loss_pct:.2f}%")
 
     if loss <= 0:
-        logger.warning("No rows were removed so cleaning may not be working")
+        logger.warning("No rows were removed — cleaning may not be working")
 
-    # Gold consistency check
+    # Checks gold hourly total matches silver count
 
     logger.info("GOLD CONSISTENCY")
-    gold_total = gold_hourly.select(
-        spark_sum("ride_count")
-    ).collect()[0][0]
+    gold_total = gold_hourly.select(spark_sum("ride_count")).collect()[0][0]
 
-    logger.info(f"Total rides in Silver: {silver_count:,}")
-    logger.info(f"Total rides in Gold (hourly sum): {gold_total:,}")
+    logger.info(f"  Total rides in Silver:           {silver_count:,}")
+    logger.info(f"  Total rides in Gold (hourly sum): {gold_total:,}")
 
     if gold_total == silver_count:
         logger.info("Gold matches Silver")
     else:
         logger.warning("Mismatch between Gold and Silver")
 
-    logger.info("Validation complete")
-
+    logger.info("Validation complete.")
     spark.stop()
 
 
