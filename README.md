@@ -52,11 +52,11 @@ Apache Spark              ← Clean, transform, aggregate
 ## Data Lake Structure
 ```
 taxi/
-├── raw/                        # Original downloaded data, never modified
+├── raw/                        # Original downloaded data that is never modified
 │   ├── yellow_tripdata_2025-01.parquet
 │   ├── ...
 │   └── taxi_zone_lookup.csv
-├── silver/                     # Cleaned, typed, and deduplicated data
+├── silver/                     # Cleaned, typed and deduplicated data
 │   └── clean_trips/
 └── gold/                       # Aggregated tables ready for analysis
     ├── hourly_demand/
