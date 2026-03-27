@@ -1,7 +1,15 @@
 from dotenv import load_dotenv
 import os
 
-load_dotenv(os.path.join(os.path.dirname(__file__), "../environment/.env"))
+_base = os.path.dirname(os.path.abspath(__file__))
+for _env_path in [
+    "/app/.env",
+    os.path.join(_base, "../environment/.env"),
+    os.path.join(_base, "../.env"),
+]:
+    if os.path.exists(_env_path):
+        load_dotenv(_env_path, override=True)
+        break
 
 BUCKET = os.getenv("S3_BUCKET", "taxi")
 

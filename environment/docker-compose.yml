@@ -97,10 +97,13 @@ services:
       - "8000:8000"
     volumes:
       - ../api:/app/api
+      - ../config:/app/config
       - ../data:/app/data
     environment:
       MINIO_ACCESS_KEY: ${MINIO_ROOT_USER}
       MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
       MINIO_ENDPOINT: ${MINIO_ENDPOINT}
     depends_on:
       minio:
@@ -121,10 +124,13 @@ services:
       - "8501:8501"
     volumes:
       - ../dashboard:/app/dashboard
+      - ../config:/app/config
       - ../data:/app/data
     environment:
       MINIO_ACCESS_KEY: ${MINIO_ROOT_USER}
       MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
       MINIO_ENDPOINT: ${MINIO_ENDPOINT}
     depends_on:
       minio:
