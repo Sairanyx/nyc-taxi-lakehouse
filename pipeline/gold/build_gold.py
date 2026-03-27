@@ -65,7 +65,7 @@ def main():
     # Q2: Ride demand by borough
 
     borough = (
-        df.filter(col("Borough").isNotNull())
+        df.filter(col("Borough").isNotNull() & ~col("Borough").isin("Unknown", "N/A", "EWR"))
         .groupBy("Borough")
         .agg(count("*").alias("ride_count"))
         .orderBy(col("ride_count").desc())
@@ -79,7 +79,9 @@ def main():
 
     routes = (
         df.filter(
-            col("Borough").isNotNull() & col("DO_Borough").isNotNull())  # ensuring the valid zones
+            col("Borough").isNotNull() & col("DO_Borough").isNotNull() &
+            ~col("Borough").isin("Unknown", "N/A", "EWR") &
+            ~col("DO_Borough").isin("Unknown", "N/A", "EWR"))
         .groupBy("Borough", "DO_Borough")  # names instead of IDs
         .agg(count("*").alias("ride_count"))  
         .orderBy(col("ride_count").desc())
